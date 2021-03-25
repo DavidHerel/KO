@@ -67,40 +67,38 @@ if  __name__ == '__main__':
     #this takes TONS OF TIME
     # GUROBIPY
     model = g.Model()
+    # get binary values
+    x = {(i, j): model.addVar(vtype=g.GRB.BINARY)
+         for i, j in permutations(range(1, nodes + 1), 2)}
 
-    # get binary values if e(i,j) is selected
-    x = {(e1[i], e2[i]): model.addVar(vtype=g.GRB.BINARY)
-         for i in range(len(e1))}
-
-    # get real values if node i is on y position in topological ordering
-    y = {i: model.addVar(vtype=g.GRB.INTEGER, ub=nodes+1)
-         for i in range(1, nodes + 1)}
-
-    model.update()
     print("Loading binary E")
     end = time.time()
     print(end - start)
 
-    bigM = 1000000;
     start = time.time()
-
-    #for edge: y_i < y_j
-    for i in range(len(e1)):
-        #+ 1, cuz < is not supported
-        model.addConstr(y[e1[i]] + 1 <= (y[e2[i]]  + bigM*x[(e1[i], e2[i])]))
+    #THIS TAKES A TON OF TIME
+    # triangle inequalities
+    for i, j, k in combinations(range(1, nodes + 1), 3):
+        model.addConstr(x[(i, j)] + x[(j,k)]-x[(i,k)] <= 1.0)
+        model.addConstr(-1*x[(i, j)] - 1* x[(j, k)] + x[(i, k)] <= 0.0)
 
     print("Loading constraints")
     end = time.time()
     print(end - start)
 
     start = time.time()
-
     # set objective
     res = 0
-    for i in range(len(e1)):
-        res += c[e1[i]][e2[i]]*x[(e1[i], e2[i])]
+    res2 = 0
+    for j in range(1, nodes + 1):
+        for k in range(1, j):
+            if j != k and (k,j):
+                res += c[k][j] * x[(k, j)]
+        for l in range(j + 1, nodes + 1):
+            if l != j and (j,l):
+                res2 += c[l][j] * (1 - x[(j, l)])
 
-    model.setObjective(res, g.GRB.MINIMIZE)
+    model.setObjective(res + res2, g.GRB.MINIMIZE)
     print("Setting up objective")
     end = time.time()
     print(end - start)
@@ -124,14 +122,29 @@ if  __name__ == '__main__':
         #print(str(result))
         #edges = []
 
-        for i in range(len(e1)):
+        #get the edges which we dont want
+        for j in range(1, nodes + 1):
+            for k in range(1, j):
+                if j != k:
+                    temp_1 = (c[k][j]*x[(k, j)].x)
+                    if(temp_1>0):
+                        #print(temp_1)
+                        #print("i: " + str(k) + " j: " + str(j))
+                        #edges.append((k,j))
+                        edge_str = ("\n" + str(k) + " " + str(j))
+                        # print(edge_str)
+                        f.write(edge_str)
+            for l in range(j + 1, nodes + 1):
+                if l != j:
+                    temp_2 = (c[l][j]*(1-x[(j, l)].x))
+                    if (temp_2 > 0):
+                        #print(temp_2)
+                        #print("i: " + str(l) + " j: " + str(j))
+                        #edges.append((l, j))
+                        edge_str = ("\n" + str(l) + " " + str(j))
+                        # print(edge_str)
+                        f.write(edge_str)
 
-            if (x[(e1[i], e2[i])].x >=0.5):
-                edge_str = ("\n" + str(e1[i]) + " " + str(e2[i]))
-                print(edge_str)
-                #print("X_ij: " + str(x[(e1[i], e2[i])].x))
-                #print("I: " + str(y[e1[i]].x) + " j: " + str(y[e2[i]].x))
-                f.write(edge_str)
 
         #sort them
         f.close()
