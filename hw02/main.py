@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import sys
+from collections import deque
+
 from copy import deepcopy
 
 from typing import *
@@ -45,30 +47,30 @@ class Graph:
     def get_first_and_last_node(self):
         return 0, len(self.nodes)-1
 
-def ff_labeling(G: Graph) -> Tuple[int, List[Tuple[Edge, int]]]:
-    s, t = G.st()
-    path_to = [(0, None, 0, 0)] * G.size()
+def ff_labeling(G):
+    s, t = G.get_first_and_last_node()
+    path_to = [(0, None, 0, 0)] * len(G.nodes)
 
     visited = {s}
     queue = deque([s])
 
-    min_capacity = MAX_INT
+    min_capacity = sys.maxsize
     path = []
 
     while queue:
-        v = G.vertices[queue.popleft()]
+        v = G.nodes[queue.popleft()]
 
-        for edge in v.outgoing:
-            target = edge.target
-            if target not in visited and edge.flow < edge.upper:
-                path_to[target] = edge.source, edge, 1, edge.upper - edge.flow
+        for edge in v.output_edges:
+            target = edge.to_node
+            if target not in visited and edge.flow < edge.upper_bound:
+                path_to[target] = edge.from_node, edge, 1, edge.upper_bound - edge.flow
                 queue.append(target)
                 visited.add(target)
 
-        for edge in v.incoming:
-            source = edge.source
-            if source not in visited and edge.flow > edge.lower:
-                path_to[source] = edge.target, edge, -1, edge.flow - edge.lower
+        for edge in v.input_edges:
+            source = edge.from_node
+            if source not in visited and edge.flow > edge.lower_bound:
+                path_to[source] = edge.to_node, edge, -1, edge.flow - edge.lower_bound
                 queue.append(source)
                 visited.add(source)
 
@@ -83,7 +85,7 @@ def ff_labeling(G: Graph) -> Tuple[int, List[Tuple[Edge, int]]]:
 
     return min_capacity, path
 
-def ff_algorithm(G: Graph) -> Graph:
+def ff_algorithm(G):
     bottleneck, augmenting_path = ff_labeling(G)
     while augmenting_path:
         for e, direction in augmenting_path:
@@ -92,7 +94,7 @@ def ff_algorithm(G: Graph) -> Graph:
     return G
 
 
-def build_g_dot(G: Graph) -> Graph:
+def build_g_dot(G):
     G_dot = deepcopy(G)
 
     # add starting intput node and new ending input node
@@ -105,12 +107,12 @@ def build_g_dot(G: Graph) -> Graph:
         e.from_node += 1
 
         # normalize bounds
-        e.upper_bound -= e.lower
+        e.upper_bound -= e.lower_bound
         e.lower_bound, e.flow = 0, 0
 
     return G_dot
 
-def solve_flow(G: Graph) -> Optional[Graph]:
+def solve_flow(G):
     # build another graph to have feasible flow
     G_dot = build_g_dot(G)
     first, last = G_dot.get_first_and_last_node()
@@ -157,16 +159,21 @@ if  __name__ == '__main__':
     f = open(input, "r")
 
     #read the first line of input file
-    C, P = [int(x) for x in input.readline().split()]
+    C, P = [int(x) for x in f.readline().split()]
 
-    #nodes= C+P +2 (for input and output node), and EDGES - empty
-    G = Graph([Node([],[]) for i in range(C + P + 2)], [])
+    # nodes= C+P +2 (for input and output node), and EDGES - empty
+    nodes = []
+    edges = []
+    for i in range(C + P + 2):
+        nodes.append(Node([],[]))
+
+    G = Graph(nodes, edges)
 
     #starting 1 layer of the graph:
     #we starting with 1, cuz 0 is starting node
     for c in range(1, C + 1):
         #read line with customer
-        lower_bound, upper_bound, *products = [int(x) for x in input.readline().split()]
+        lower_bound, upper_bound, *products = [int(x) for x in f.readline().split()]
 
         # source is 0, because it is connected to starting node, c is our number given to a customer
         G.insert_edge(lower_bound, 0, upper_bound, 0, c)
@@ -178,7 +185,7 @@ if  __name__ == '__main__':
             # from customer to product, also upper bound is 1, cuz customer can review product only once
             G.insert_edge(0, 0, 1, c, p)
 
-    reviews_needed = [int(x) for x in input.readline().split()]
+    reviews_needed = [int(x) for x in f.readline().split()]
     #last layer of the GRAPH, products are connected to 1 output node
     #starting with p = C+1
     for p, reviews_needed in enumerate(reviews_needed, start=C + 1):
