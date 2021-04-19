@@ -30,6 +30,7 @@ class Edge:
         self.flow = flow
         self.upper_bound = upper_bound
         self.from_node = from_node
+        self.my_id = 0
         self.to_node = to_node
 
 class Graph:
@@ -120,18 +121,6 @@ class Graph:
             return True
         return False
 
-"""  
-    if not visited[len(G.nodes)-1]:
-        return 0, path_to
-
-
-    path_flow = np.inf
-    parent, edge, direction, capacity = path_to[len(G.nodes)-1]
-    while edge:
-        path_flow = min(path_flow, capacity)
-        path.append((edge, direction))
-        parent, edge, direction, capacity = path_to[parent]
-    """
 def edmonds_karp_algorithm(G):
     while True:
         #make walks
@@ -164,8 +153,8 @@ def solve_flow(G, extended_G):
 
     #STEP 3)
     # set flow in the original graph
-    for original_graph, extended_graph in zip(G.edges, extended_G.edges):
-        original_graph.flow = extended_graph.flow + original_graph.lower_bound
+    for i in range(len(G.edges)):
+        G.edges[i].flow = extended_G.edges[i].flow + G.edges[i].lower_bound
 
     #last run of FF
     G = edmonds_karp_algorithm(G)
