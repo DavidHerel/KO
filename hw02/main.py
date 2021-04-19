@@ -5,6 +5,17 @@ from collections import deque
 from copy import deepcopy
 
 from typing import *
+import numpy as np
+
+class Node:
+
+    #input edges - number of input edges to node
+    #output edges - number of output edges from node
+    #my_id
+    def __init__(self, input_edges, output_edges, my_id):
+        self.input_edges = input_edges
+        self.output_edges = output_edges
+        self.my_id = my_id
 
 #class for Edge
 class Edge:
@@ -17,22 +28,14 @@ class Edge:
         self.from_node = from_node
         self.to_node = to_node
 
-
-class Node:
-
-    #input edges - number of input edges to node
-    #output edges - number of output edges from node
-    def __init__(self, input_edges, output_edges):
-        self.input_edges = input_edges
-        self.output_edges = output_edges
-
-
 class Graph:
 
     #graph has nodes and edges
     def __init__(self, nodes, edges):
         self.nodes = nodes
         self.edges = edges
+        self.starting_node = 0
+        self.ending_node = len(self.nodes) - 1
 
     #insert edge to the graph - also modify input and output nodes
     def insert_edge(self, lower_bound, flow, upper_bound, from_node, to_node):
@@ -44,110 +47,143 @@ class Graph:
         self.nodes[to_node].input_edges.append(e)
         self.nodes[from_node].output_edges.append(e)
 
-    def get_first_and_last_node(self):
-        return 0, len(self.nodes)-1
 
-def ff_labeling(G):
-    s, t = G.get_first_and_last_node()
-    path_to = [(0, None, 0, 0)] * len(G.nodes)
+"""  
+    if not visited[len(G.nodes)-1]:
+        return 0, path_to
 
-    visited = {s}
-    queue = deque([s])
 
-    min_capacity = sys.maxsize
-    path = []
+    path_flow = np.inf
+    parent, edge, direction, capacity = path_to[len(G.nodes)-1]
+    while edge:
+        path_flow = min(path_flow, capacity)
+        path.append((edge, direction))
+        parent, edge, direction, capacity = path_to[parent]
+    """
+def bfs_walk(G):
+    visited = [False]*len(G.nodes)
+    queue = deque()
+    queue.append(G.nodes[0])
+    visited[0] = True
+    path_flow = np.inf
 
+    before = [0]*len(G.nodes)
+    edges_arr = [None] * len(G.nodes)
+    forward_backward = ['None'] * len(G.nodes)
+    curr_path = []
     while queue:
-        v = G.nodes[queue.popleft()]
+        curr_node = queue.popleft()
 
-        for edge in v.output_edges:
-            target = edge.to_node
-            if target not in visited and edge.flow < edge.upper_bound:
-                path_to[target] = edge.from_node, edge, 1, edge.upper_bound - edge.flow
-                queue.append(target)
-                visited.add(target)
+        for edge in curr_node.input_edges:
+            if not visited[edge.from_node] and edge.flow > edge.lower_bound:
+                queue.append(G.nodes[edge.from_node])
+                visited[edge.from_node] = True
 
-        for edge in v.input_edges:
-            source = edge.from_node
-            if source not in visited and edge.flow > edge.lower_bound:
-                path_to[source] = edge.to_node, edge, -1, edge.flow - edge.lower_bound
-                queue.append(source)
-                visited.add(source)
+                before[edge.from_node] = edge.to_node
+                edges_arr[edge.from_node] = edge
+                forward_backward[edge.from_node] = 'B'
 
-        if t in visited:
-            parent, edge, direction, capacity = path_to[t]
-            while edge:
-                min_capacity = min(min_capacity, capacity)
-                path.append((edge, direction))
-                parent, edge, direction, capacity = path_to[parent]
+        for edge in curr_node.output_edges:
+            if not visited[edge.to_node] and edge.flow < edge.upper_bound:
+                queue.append(G.nodes[edge.to_node])
+                visited[edge.to_node] = True
 
+                before[edge.to_node] = edge.from_node
+                edges_arr[edge.to_node] = edge
+                forward_backward[edge.to_node] = 'F'
+
+        if visited[len(G.nodes) - 1]:
             break
 
-    return min_capacity, path
+    edge = edges_arr[len(G.nodes) - 1]
+    f_b = forward_backward[len(G.nodes) - 1]
+    bef = before[len(G.nodes) - 1]
+    f_b_flow = []
+    curr_path = []
+    while edge is not None:
+        if f_b == 'F':
+            cap = edge.upper_bound - edge.flow
+            path_flow = min(path_flow, cap)
+            curr_path.append(edge)
+            f_b_flow.append('F')
+        elif f_b == 'B':
+            cap = edge.flow - edge.lower_bound
+            path_flow = min(path_flow, cap)
+            curr_path.append(edge)
+            f_b_flow.append('B')
 
-def ff_algorithm(G):
-    bottleneck, augmenting_path = ff_labeling(G)
-    while augmenting_path:
-        for e, direction in augmenting_path:
-            e.flow += direction * bottleneck
-        bottleneck, augmenting_path = ff_labeling(G)
+        edge = edges_arr[bef]
+        f_b = forward_backward[bef]
+        bef = before[bef]
+
+    if curr_path != []:
+        for i in range(len(curr_path)):
+            if (f_b_flow[i] == 'B'):
+                curr_path[i].flow = curr_path[i].flow - path_flow
+            else:
+                curr_path[i].flow = curr_path[i].flow + path_flow
+
+        return True
+    return False
+
+def edmonds_karp_algorithm(G):
+    while True:
+        #make walks
+        if (not bfs_walk(G)):
+            break
     return G
 
 
-def build_g_dot(G):
-    G_dot = deepcopy(G)
+def solve_flow(G):
+    # build another graph to have feasible flow
+    extended_G = deepcopy(G)
 
     # add starting intput node and new ending input node
-    G_dot.nodes = ([Node([],[])] + G_dot.nodes + [Node([],[])])
+    extended_G.nodes = ([Node([],[], -1)] + extended_G.nodes + [Node([],[], len(G.nodes)+2)])
 
     # shift all existing edges
-    for e in G_dot.edges:
+    for e in extended_G.edges:
         # shift indices - new source and target added
         e.to_node += 1
         e.from_node += 1
 
         # normalize bounds
         e.upper_bound -= e.lower_bound
-        e.lower_bound, e.flow = 0, 0
-
-    return G_dot
-
-def solve_flow(G):
-    # build another graph to have feasible flow
-    G_dot = build_g_dot(G)
-    first, last = G_dot.get_first_and_last_node()
+        e.flow = 0
+        e.lower_bound = 0
 
     #from prev last node to to prev input node (that cycle like from video)
-    G_dot.insert_edge(0, 0, sys.maxsize, last-1, first+1)
+    extended_G.insert_edge(0, 0, np.inf, len(extended_G.nodes)-1-1, 1)
 
-    #go through every node in a graph, append starting by 1 cuz we will append it to G_dot (like in video)
-    for idx, v in enumerate(G.nodes, start=1):
-        balance = sum(e.lower_bound for e in v.input_edges) - sum(e.lower_bound for e in v.output_edges)
+    #go through every node in a graph, append starting by 1 cuz we will append it to extended_G (like in video)
+    for i in range(len(G.nodes)):
+        value = sum(e.lower_bound for e in G.nodes[i].input_edges) - sum(e.lower_bound for e in G.nodes[i].output_edges)
 
         #like in video
-        if balance >= 0:
-            #from s dot into current node
-            G_dot.insert_edge(0, 0, balance, first, idx)
+        if value < 0:
+            # from current node to new t dot end
+            extended_G.insert_edge(0, 0, -1 * value, i + 1, len(extended_G.nodes) - 1)
         else:
-            #from current node to new t dot end
-            G_dot.insert_edge(0, 0, -1*balance, idx, last)
+            # from s dot into current node
+            extended_G.insert_edge(0, 0, value, 0, i + 1)
 
-    # sanity check
-    G_dot = ff_algorithm(G_dot)
+    # check corectness of algorithm
+    extended_G = edmonds_karp_algorithm(extended_G)
 
     #STEP 2) Does it saturate?
     # is the solution correct?
-    banned = [e for e in G_dot.nodes[first].output_edges if e.flow != e.upper_bound]
-    if banned:
-        return None
+    for edge in extended_G.nodes[0].output_edges:
+        if edge.flow != edge.upper_bound:
+            return None
 
     #STEP 3)
     # set flow in the original graph
-    for original, extended in zip(G.edges, G_dot.edges):
-        original.flow = original.lower_bound + extended.flow
+    for original_graph, extended_graph in zip(G.edges, extended_G.edges):
+        original_graph.flow = extended_graph.flow + original_graph.lower_bound
 
     #last run of FF
-    return ff_algorithm(G)
+    G = edmonds_karp_algorithm(G)
+    return G
 
 if  __name__ == '__main__':
     #take 2 arguments (input and output)
@@ -159,38 +195,42 @@ if  __name__ == '__main__':
     f = open(input, "r")
 
     #read the first line of input file
-    C, P = [int(x) for x in f.readline().split()]
+    temp_data = list(map(int, f.readline().split()))
+    C = temp_data[0]
+    P = temp_data[1]
 
     # nodes= C+P +2 (for input and output node), and EDGES - empty
     nodes = []
     edges = []
     for i in range(C + P + 2):
-        nodes.append(Node([],[]))
+        nodes.append(Node([],[], i))
 
     G = Graph(nodes, edges)
-
     #starting 1 layer of the graph:
     #we starting with 1, cuz 0 is starting node
     for c in range(1, C + 1):
         #read line with customer
-        lower_bound, upper_bound, *products = [int(x) for x in f.readline().split()]
+        temp_data = list(map(int, f.readline().split()))
+        lower_bound = temp_data[0]
+        upper_bound = temp_data[1]
 
         # source is 0, because it is connected to starting node, c is our number given to a customer
         G.insert_edge(lower_bound, 0, upper_bound, 0, c)
 
-        #connect customer to 2nd layer where he will connect to every product he does own
-        for p in products:
-            # increase product number
-            p += C
+        # connect customer to 2nd layer where he will connect to every product he does own
+        for i in range(2, len(temp_data)):
             # from customer to product, also upper bound is 1, cuz customer can review product only once
-            G.insert_edge(0, 0, 1, c, p)
+            G.insert_edge(0, 0, 1, c, temp_data[i]+C)
 
-    reviews_needed = [int(x) for x in f.readline().split()]
+
+    temp_data = list(map(int, f.readline().split()))
     #last layer of the GRAPH, products are connected to 1 output node
     #starting with p = C+1
-    for p, reviews_needed in enumerate(reviews_needed, start=C + 1):
+    start = C + 1
+    for i in range(len(temp_data)):
         #lb = reviews needed, flow 0, upper bound is INT MAX, from product to output NODE - which is last node = C+P+1
-        G.insert_edge(reviews_needed, 0, sys.maxsize, p, C+P+1)
+        G.insert_edge(temp_data[i], 0, np.inf, start, C+P+1)
+        start+=1
 
     #close the file
     f.close()
@@ -202,13 +242,17 @@ if  __name__ == '__main__':
     result=[]
     #if there exist solution
     if G:
-        for v in G.nodes[1:C + 1]:
-            reviews = sorted([e.to_node for e in v.output_edges if e.flow])
-            result.append(' '.join([str(r - C) for r in reviews]))
+        f = open(output, "w")
+        #customers
+        for node in G.nodes[1:C + 1]:
+            #
+            for e in node.output_edges:
+                if e.flow > 0:
+                    f.write(str(e.to_node-C) + " ")
+            f.write("\n")
+        f.close()
     #if not
     else:
-        result = ['-1']
-
-    f = open(output, "w")
-    f.writelines([f'{line}\n' for line in result if line])
-    f.close()
+        f = open(output, "w")
+        f.write('-1')
+        f.close()
