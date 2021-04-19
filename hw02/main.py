@@ -2,9 +2,6 @@
 import sys
 from collections import deque
 
-from copy import deepcopy
-
-from typing import *
 import numpy as np
 
 class Node:
@@ -13,15 +10,22 @@ class Node:
     #output edges - number of output edges from node
     #my_id
     def __init__(self, input_edges, output_edges, my_id):
+        self.balance = 0
         self.input_edges = input_edges
-        self.output_edges = output_edges
         self.my_id = my_id
+        self.output_edges = output_edges
+
+    def count_balance(self):
+        sum_in = sum(e.lower_bound for e in self.input_edges)
+        sum_out = sum(e.lower_bound for e in self.output_edges)
+        return sum_in - sum_out
 
 #class for Edge
 class Edge:
 
     #init lower bound, flow, upper boud, from node, to node
     def __init__(self, lower_bound, flow, upper_bound, from_node, to_node):
+        self.used = False
         self.lower_bound = lower_bound
         self.flow = flow
         self.upper_bound = upper_bound
@@ -32,10 +36,13 @@ class Graph:
 
     #graph has nodes and edges
     def __init__(self, nodes, edges):
+        #self.adj_matrix = adj_matrix
+        #BULLSHIT - make it as classes - no matrixes - no c
         self.nodes = nodes
-        self.edges = edges
         self.starting_node = 0
         self.ending_node = len(self.nodes) - 1
+        self.edges = edges
+        self.max_flow = -1
 
     #insert edge to the graph - also modify input and output nodes
     def insert_edge(self, lower_bound, flow, upper_bound, from_node, to_node):
@@ -47,6 +54,71 @@ class Graph:
         self.nodes[to_node].input_edges.append(e)
         self.nodes[from_node].output_edges.append(e)
 
+    def bfs_walk(self, G):
+        visited = [False] * len(G.nodes)
+        queue = deque()
+        queue.append(G.nodes[0])
+        visited[0] = True
+        path_flow = np.inf
+
+        before = [0] * len(G.nodes)
+        edges_arr = [None] * len(G.nodes)
+        forward_backward = ['None'] * len(G.nodes)
+        curr_path = []
+        while queue:
+            curr_node = queue.popleft()
+
+            for edge in curr_node.input_edges:
+                if not visited[edge.from_node] and edge.lower_bound < edge.flow:
+                    queue.append(G.nodes[edge.from_node])
+                    visited[edge.from_node] = True
+
+                    before[edge.from_node] = edge.to_node
+                    edges_arr[edge.from_node] = edge
+                    forward_backward[edge.from_node] = 'B'
+
+            for edge in curr_node.output_edges:
+                if not visited[edge.to_node] and edge.upper_bound > edge.flow:
+                    queue.append(G.nodes[edge.to_node])
+                    visited[edge.to_node] = True
+
+                    before[edge.to_node] = edge.from_node
+                    edges_arr[edge.to_node] = edge
+                    forward_backward[edge.to_node] = 'F'
+
+            if visited[len(G.nodes) - 1]:
+                break
+
+        edge = edges_arr[len(G.nodes) - 1]
+        f_b = forward_backward[len(G.nodes) - 1]
+        bef = before[len(G.nodes) - 1]
+        f_b_flow = []
+        curr_path = []
+        while edge is not None:
+            if f_b == 'F':
+                cap = edge.upper_bound - edge.flow
+                path_flow = min(path_flow, cap)
+                curr_path.append(edge)
+                f_b_flow.append('F')
+            elif f_b == 'B':
+                cap = edge.flow - edge.lower_bound
+                path_flow = min(path_flow, cap)
+                curr_path.append(edge)
+                f_b_flow.append('B')
+
+            edge = edges_arr[bef]
+            f_b = forward_backward[bef]
+            bef = before[bef]
+
+        if curr_path != []:
+            for i in range(len(curr_path)):
+                if (f_b_flow[i] == 'B'):
+                    curr_path[i].flow = curr_path[i].flow - path_flow
+                else:
+                    curr_path[i].flow = curr_path[i].flow + path_flow
+
+            return True
+        return False
 
 """  
     if not visited[len(G.nodes)-1]:
@@ -60,104 +132,18 @@ class Graph:
         path.append((edge, direction))
         parent, edge, direction, capacity = path_to[parent]
     """
-def bfs_walk(G):
-    visited = [False]*len(G.nodes)
-    queue = deque()
-    queue.append(G.nodes[0])
-    visited[0] = True
-    path_flow = np.inf
-
-    before = [0]*len(G.nodes)
-    edges_arr = [None] * len(G.nodes)
-    forward_backward = ['None'] * len(G.nodes)
-    curr_path = []
-    while queue:
-        curr_node = queue.popleft()
-
-        for edge in curr_node.input_edges:
-            if not visited[edge.from_node] and edge.flow > edge.lower_bound:
-                queue.append(G.nodes[edge.from_node])
-                visited[edge.from_node] = True
-
-                before[edge.from_node] = edge.to_node
-                edges_arr[edge.from_node] = edge
-                forward_backward[edge.from_node] = 'B'
-
-        for edge in curr_node.output_edges:
-            if not visited[edge.to_node] and edge.flow < edge.upper_bound:
-                queue.append(G.nodes[edge.to_node])
-                visited[edge.to_node] = True
-
-                before[edge.to_node] = edge.from_node
-                edges_arr[edge.to_node] = edge
-                forward_backward[edge.to_node] = 'F'
-
-        if visited[len(G.nodes) - 1]:
-            break
-
-    edge = edges_arr[len(G.nodes) - 1]
-    f_b = forward_backward[len(G.nodes) - 1]
-    bef = before[len(G.nodes) - 1]
-    f_b_flow = []
-    curr_path = []
-    while edge is not None:
-        if f_b == 'F':
-            cap = edge.upper_bound - edge.flow
-            path_flow = min(path_flow, cap)
-            curr_path.append(edge)
-            f_b_flow.append('F')
-        elif f_b == 'B':
-            cap = edge.flow - edge.lower_bound
-            path_flow = min(path_flow, cap)
-            curr_path.append(edge)
-            f_b_flow.append('B')
-
-        edge = edges_arr[bef]
-        f_b = forward_backward[bef]
-        bef = before[bef]
-
-    if curr_path != []:
-        for i in range(len(curr_path)):
-            if (f_b_flow[i] == 'B'):
-                curr_path[i].flow = curr_path[i].flow - path_flow
-            else:
-                curr_path[i].flow = curr_path[i].flow + path_flow
-
-        return True
-    return False
-
 def edmonds_karp_algorithm(G):
     while True:
         #make walks
-        if (not bfs_walk(G)):
+        if (not G.bfs_walk(G)):
             break
     return G
 
 
-def solve_flow(G):
-    # build another graph to have feasible flow
-    extended_G = deepcopy(G)
-
-    # add starting intput node and new ending input node
-    extended_G.nodes = ([Node([],[], -1)] + extended_G.nodes + [Node([],[], len(G.nodes)+2)])
-
-    # shift all existing edges
-    for e in extended_G.edges:
-        # shift indices - new source and target added
-        e.to_node += 1
-        e.from_node += 1
-
-        # normalize bounds
-        e.upper_bound -= e.lower_bound
-        e.flow = 0
-        e.lower_bound = 0
-
-    #from prev last node to to prev input node (that cycle like from video)
-    extended_G.insert_edge(0, 0, np.inf, len(extended_G.nodes)-1-1, 1)
-
+def solve_flow(G, extended_G):
     #go through every node in a graph, append starting by 1 cuz we will append it to extended_G (like in video)
     for i in range(len(G.nodes)):
-        value = sum(e.lower_bound for e in G.nodes[i].input_edges) - sum(e.lower_bound for e in G.nodes[i].output_edges)
+        value = G.nodes[i].count_balance()
 
         #like in video
         if value < 0:
@@ -202,10 +188,14 @@ if  __name__ == '__main__':
     # nodes= C+P +2 (for input and output node), and EDGES - empty
     nodes = []
     edges = []
+    edges_ext = []
+    nodes_ext = []
     for i in range(C + P + 2):
         nodes.append(Node([],[], i))
+        nodes_ext.append(Node([], [], i))
 
     G = Graph(nodes, edges)
+    extended_G = Graph([Node([],[], -1)] + nodes_ext + [Node([],[], len(G.nodes)+2)], edges_ext)
     #starting 1 layer of the graph:
     #we starting with 1, cuz 0 is starting node
     for c in range(1, C + 1):
@@ -216,11 +206,13 @@ if  __name__ == '__main__':
 
         # source is 0, because it is connected to starting node, c is our number given to a customer
         G.insert_edge(lower_bound, 0, upper_bound, 0, c)
+        extended_G.insert_edge(0, 0, upper_bound-lower_bound, 1, c+1)
 
         # connect customer to 2nd layer where he will connect to every product he does own
         for i in range(2, len(temp_data)):
             # from customer to product, also upper bound is 1, cuz customer can review product only once
             G.insert_edge(0, 0, 1, c, temp_data[i]+C)
+            extended_G.insert_edge(0,0,1, c+1, temp_data[i]+C+1)
 
 
     temp_data = list(map(int, f.readline().split()))
@@ -230,29 +222,32 @@ if  __name__ == '__main__':
     for i in range(len(temp_data)):
         #lb = reviews needed, flow 0, upper bound is INT MAX, from product to output NODE - which is last node = C+P+1
         G.insert_edge(temp_data[i], 0, np.inf, start, C+P+1)
+        extended_G.insert_edge(0, 0, np.inf-temp_data[i], start+1, C+P+1+1)
         start+=1
 
     #close the file
     f.close()
+    #from prev last node to to prev input node (that cycle like from video)
+    extended_G.insert_edge(0, 0, np.inf, len(extended_G.nodes)-1-1, 1)
 
     #PROCESSING PHASE
     #now we have graph ready and lets go baby
-    G = solve_flow(G)
+    G = solve_flow(G, extended_G)
 
-    result=[]
-    #if there exist solution
-    if G:
+    #if there does not exist solution
+    if G is None:
+        f = open(output, "w")
+        f.write('-1')
+        f.close()
+    #exist:
+    else:
+
         f = open(output, "w")
         #customers
-        for node in G.nodes[1:C + 1]:
+        for i in range(1, C+1):
             #
-            for e in node.output_edges:
+            for e in G.nodes[i].output_edges:
                 if e.flow > 0:
                     f.write(str(e.to_node-C) + " ")
             f.write("\n")
-        f.close()
-    #if not
-    else:
-        f = open(output, "w")
-        f.write('-1')
         f.close()
