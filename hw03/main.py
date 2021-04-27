@@ -94,37 +94,43 @@ class Graph:
                 edges_temp.append(edge)
         return edges_temp[0], edges_temp[1]
 
-#TODO this shit only
 def bellman_ford_second(residual_G):
+    cycle_exists = False
+    cycle_element = None
     delta = np.inf
     final_path = []
     path = {}
     for x in range(len(residual_G.feas_edges)-1):
-        for (i, j), edge in residual_G.feas_edges.items():
+        for (i, j) in residual_G.feas_edges.keys():
             #if (v == 4):
                 #print(str(dist[u]) + str(" ") + str(edge.price) + " " + str(dist[v]))
             #check for better path
-            temp_ending = residual_G.dist[j]
-            temp_better = edge.price + residual_G.dist[i]
-            if  temp_ending > temp_better:
-                #how i get into vertex j
-                path[j] = i
-                residual_G.dist[j] = temp_better
+            if (x == len(residual_G.feas_edges) -2):
+                temp_ending = residual_G.dist[j]
+                temp_better = residual_G.feas_edges[(i, j)].price + residual_G.dist[i]
+                if temp_ending > temp_better:
+                    # how i get into vertex j
+                    path[j] = i
+                    residual_G.dist[j] = temp_better
+                    if (not cycle_exists):
+                        cycle_exists = True
+                        cycle_element = j
+            else:
+                temp_ending = residual_G.dist[j]
+                temp_better = residual_G.feas_edges[(i, j)].price + residual_G.dist[i]
+                if  temp_ending > temp_better:
+                    #how i get into vertex j
+                    path[j] = i
+                    residual_G.dist[j] = temp_better
 
-
-    in_cycle = None
-    for (i, j), edge in residual_G.feas_edges.items():
-        if residual_G.dist[i] + edge.price < residual_G.dist[j]:
-            in_cycle = j
-            break
-
-    if in_cycle:
+    if not cycle_exists:
+        return delta,final_path
+    else:
         #print("pred")
         #print(pred)
-        cycle = backtrack_cycle(in_cycle, path)
+        parent_el = path[cycle_element]
+        cycle = find_cycle(parent_el, cycle_element, path)
         #print(len(cycle))
-        cycle.reverse()
-        cycle.append(cycle[0])
 
         for curr in range(len(cycle)-1):
             future_val = cycle[curr+1]
@@ -132,16 +138,24 @@ def bellman_ford_second(residual_G):
             final_path.append((curr_val, future_val))
             #print("Do cyklu pridano: ")
             delta= min(delta, residual_G.adj_matrix[curr_val][future_val].upper_bound)
+        return delta, final_path
 
-    return delta, final_path
-
-def backtrack_cycle(starting, path):
+def find_cycle(parent_el, starting, path):
     cycle_vertexes = []
-    #pridam prvni prvek
-    cycle_vertexes.append(starting)
     #kouknu se co do nej vedlo
-    cur = path[starting]
+    cur = parent_el
     #print(len(cycle))
+    #pridam prvni prvek
+    q = deque()
+    q.appendleft(starting)
+    while q:
+        node = q.pop()
+        #print("exploring")
+        cycle_vertexes.append(node)
+        cur = path[node]
+        if (path[node] not in cycle_vertexes):
+            q.appendleft(path[node])
+    """
     #loop till is all cycle in field
     while cur not in cycle_vertexes:
         #pridam to
@@ -149,6 +163,7 @@ def backtrack_cycle(starting, path):
         #print(cur + " added to cycle")
         #kouknu se co do nej vedlo
         cur = path[cur]
+    """
     #print(cycle)
     cycle_starts_idx = cycle_vertexes.index(cur)
     #print(cur)
@@ -156,6 +171,10 @@ def backtrack_cycle(starting, path):
     output = []
     for i in range(cycle_starts_idx, len(cycle_vertexes)):
         output.append(cycle_vertexes[i])
+
+    output.reverse()
+    output.append(output[0])
+
     return output
 
 def solve(G, residual_G):
