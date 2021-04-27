@@ -61,6 +61,8 @@ class Graph:
         self.edges = edges
         self.max_flow = -1
         self.adj_matrix = [[None for x in range(len(nodes)+1)] for y in range(len(nodes)+1)]
+        self.dist = [np.inf] * (len(nodes)+1)
+        self.feas_edges = {}
 
     #insert edge to the graph - also modify input and output nodes
     def insert_edge(self, lower_bound, flow, upper_bound, price, from_node, to_node, is_residual):
@@ -92,80 +94,88 @@ class Graph:
                 edges_temp.append(edge)
         return edges_temp[0], edges_temp[1]
 
-def bellman_ford(residual_G):
-    dist, pred, edges = {}, {}, {}
-
-    # create virtual source node
-    source = '-1'
-    dist[source] = 0
-
-    for edge in residual_G.edges:
-        if edge.upper_bound:
-            str_from = f'{edge.from_node}'
-            str_to = f'{edge.to_node}'
-            # set distance to infinity
-            dist[str_from], dist[str_to] = float('inf'), float('inf')
-            # create valid residuals
-            edges[(str_from, str_to)] = edge
-
-            # introduce new edges from the start to the all vertices
-            edges[(source, str_from)] = Edge(0, 0, 1, 0, -1, edge.from_node, False)
-            edges[(source, str_to)] = Edge(0, 0, 1, 0, -1, edge.to_node, False)
-
-    for _ in range(len(edges.keys()) - 1):
-        for (u, v), edge in edges.items():
-            #if (v == '4'):
+def bellman_ford_second(residual_G):
+    delta = np.inf
+    final_path = []
+    path = {}
+    for x in range(len(residual_G.nodes)):
+        for (i, j), edge in residual_G.feas_edges.items():
+            #if (v == 4):
                 #print(str(dist[u]) + str(" ") + str(edge.price) + " " + str(dist[v]))
-            if dist[u] + edge.price < dist[v]:
-                dist[v] = dist[u] + edge.price
-                pred[v] = u
+            #check for better path
+            temp_ending = residual_G.dist[j]
+            temp_better = edge.price + residual_G.dist[i]
+            if  temp_ending > temp_better:
+                #how i get into vertex j
+                path[j] = i
+                residual_G.dist[j] = temp_better
 
 
     in_cycle = None
-    for (u, v), edge in edges.items():
-        if dist[u] + edge.price < dist[v]:
-            in_cycle = v
+    for (i, j), edge in residual_G.feas_edges.items():
+        if residual_G.dist[i] + edge.price < residual_G.dist[j]:
+            in_cycle = j
             break
 
     # backtrack cycle
     if in_cycle:
         #print("pred")
         #print(pred)
-        cycle = backtrack_cycle(pred, in_cycle)
+        cycle = backtrack_cycle(in_cycle, path)
         #print(len(cycle))
-        return cycle_walk(cycle[0], cycle, residual_G)
-    return 0, []
+        cycle.reverse()
+        cycle.append(cycle[0])
+        prev = cycle[0]
 
-def backtrack_cycle(pred, start):
-    cycle, cur = [start], pred[start]
+        for curr in range(1, len(cycle)):
+            final_path.append((prev, cycle[curr]))
+            #print("Do cyklu pridano: " + str(previous) + " " + str(current))
+            delta= min(delta, residual_G.adj_matrix[prev][cycle[curr]].upper_bound)
+            prev = cycle[curr]
+
+    return delta, final_path
+
+def backtrack_cycle(starting, path):
+    cycle_vertexes = []
+    #pridam prvni prvek
+    cycle_vertexes.append(starting)
+    #kouknu se co do nej vedlo
+    cur = path[starting]
     #print(len(cycle))
-    while cur not in cycle:
-        cycle.append(cur)
+    #loop till is all cycle in field
+    while cur not in cycle_vertexes:
+        #pridam to
+        cycle_vertexes.append(cur)
         #print(cur + " added to cycle")
-        cur = pred[cur]
+        #kouknu se co do nej vedlo
+        cur = path[cur]
     #print(cycle)
-    cycle_starts_idx = cycle.index(cur)
+    cycle_starts_idx = cycle_vertexes.index(cur)
     #print(cur)
     #print(cycle_starts_idx)
-    return cycle[cycle_starts_idx:][::-1]
-
-def cycle_walk(first, cycle, residual_G):
-    capacity, previous = float('inf'), first
-    cycle.append(first)
-
-    final = []
-    for current in cycle[1:]:
-        final.append((previous, current))
-        #print("Do cyklu pridano: " + str(previous) + " " + str(current))
-        capacity, previous = min(capacity, residual_G.adj_matrix[int(previous)][int(current)].upper_bound), current
-
-    return capacity, final
-
+    output = []
+    for i in range(cycle_starts_idx, len(cycle_vertexes)):
+        output.append(cycle_vertexes[i])
+    return output
 
 def solve(G, residual_G):
     while True:
-        delta, cycle = bellman_ford(residual_G)
-        if (delta <= 0):
+        residual_G.feas_edges={}
+        #TODO
+        for edge in residual_G.edges:
+            if edge.upper_bound >= 1:
+                str_from = edge.from_node
+                str_to = edge.to_node
+                # set distance to infinity
+                residual_G.dist[str_from], residual_G.dist[str_to] = np.inf, np.inf
+                # create valid residuals
+                residual_G.feas_edges[(str_from, str_to)] = edge
+
+                # introduce new edges from the start to the all vertices
+                residual_G.feas_edges[(0, str_from)] = Edge(0, 0, 1, 0, -1, edge.from_node, False)
+                residual_G.feas_edges[(0, str_to)] = Edge(0, 0, 1, 0, -1, edge.to_node, False)
+        delta, cycle = bellman_ford_second(residual_G)
+        if (cycle == []):
             break
         else:
             counter = 0
@@ -173,14 +183,32 @@ def solve(G, residual_G):
             for (i, j) in cycle:
                 #error maybe here
                 #print(i, j)
-                if G.adj_matrix[int(i)][int(j)] != None:
+                if G.adj_matrix[i][j] != None:
                     #print("jsem tu " + str(counter))
-                    G.adj_matrix[int(i)][int(j)].flow += delta
+                    G.adj_matrix[i][j].flow += delta
                     counter+=1
                 else:
-                    G.adj_matrix[int(j)][int(i)].flow -= delta
-                residual_G.adj_matrix[int(i)][int(j)].upper_bound -= delta
-                residual_G.adj_matrix[int(j)][int(i)].upper_bound += delta
+                    G.adj_matrix[j][i].flow -= delta
+
+               # if(residual_G.adj_matrix[i][j].upper_bound - delta < 1 and residual_G.adj_matrix[i][j].upper_bound >= 1):
+                  ##  if (i, j) in residual_G.feas_edges:
+                   #     residual_G.feas_edges.pop((i, j))
+                   # residual_G.feas_edges.pop((0, i))
+                   # residual_G.feas_edges.pop((0, j))
+                residual_G.adj_matrix[i][j].upper_bound -= delta
+
+                #if (residual_G.adj_matrix[j][i].upper_bound + delta >= 1 and residual_G.adj_matrix[j][i].upper_bound < 1):
+                    #residual_G.dist[i] = np.inf
+                    #residual_G.dist[j] = np.inf
+
+                    # create valid residuals
+                    #residual_G.feas_edges[(j, i)] = res_e1
+
+                    # introduce new edges from the start to the all vertices
+                    #residual_G.feas_edges[(0, i)] = Edge(0, 0, 1, 0, -1, residual_G.adj_matrix[j][i].from_node, False)
+                    #residual_G.feas_edges[(0, j)] = Edge(0, 0, 1, 0, -1, residual_G.adj_matrix[j][i].to_node, False)
+
+                residual_G.adj_matrix[j][i].upper_bound += delta
     return G
 
 if  __name__ == '__main__':
@@ -216,7 +244,7 @@ if  __name__ == '__main__':
         #make graph
         G = Graph(nodes, edges)
         residual_G = Graph(res_nodes, res_edges)
-
+        residual_G.dist[0] = 0
         #read second frame to ensure 2nd layer
         curr_frame = list(map(int, f.readline().split()))
 
@@ -258,6 +286,27 @@ if  __name__ == '__main__':
                 G.insert_edge(e1)
                 residual_G.insert_edge(res_e1)
                 residual_G.insert_edge(res_e2)
+
+                #make another init graph
+                #for res_e2
+                if flow == 1:
+                    # set distance to infinity
+                    residual_G.dist[second_node_index], residual_G.dist[node_index] = np.inf, np.inf
+                    # create valid residuals
+                    #residual_G.feas_edges[(second_node_index, node_index)] = res_e2
+
+                    # introduce new edges from the start to the all vertices
+                    #residual_G.feas_edges[(0, second_node_index)] = Edge(0, 0, 1, 0, -1, res_e2.from_node, False)
+                    #residual_G.feas_edges[(0, node_index)] = Edge(0, 0, 1, 0, -1, res_e2.to_node, False)
+                else:
+                    # set distance to infinity
+                    residual_G.dist[node_index], residual_G.dist[second_node_index] = np.inf, np.inf
+                    # create valid residuals
+                    #residual_G.feas_edges[(node_index, second_node_index)] = res_e1
+
+                    # introduce new edges from the start to the all vertices
+                    #residual_G.feas_edges[(0, node_index)] = Edge(0, 0, 1, 0, -1, res_e1.from_node, False)
+                    #residual_G.feas_edges[(0, second_node_index)] = Edge(0, 0, 1, 0, -1, res_e1.to_node, False)
 
                 curr_cord_second+=2
 
