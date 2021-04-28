@@ -94,6 +94,37 @@ class Graph:
                 edges_temp.append(edge)
         return edges_temp[0], edges_temp[1]
 
+
+def find_cycle(parent_el, starting, path):
+    cycle_vertexes = []
+    #kouknu se co do nej vedlo
+    cur = parent_el
+    #print(len(cycle))
+    #pridam prvni prvek
+    q = deque()
+    q.appendleft(starting)
+    while q:
+        node = q.pop()
+        #print("exploring")
+        cycle_vertexes.append(node)
+        cur = path[node]
+        if (path[node] not in cycle_vertexes):
+            q.appendleft(path[node])
+
+    #print(cycle)
+    cycle_starts_idx = cycle_vertexes.index(cur)
+    #print(cur)
+    #print(cycle_starts_idx)
+    output = []
+    for i in range(cycle_starts_idx, len(cycle_vertexes)):
+        output.append(cycle_vertexes[i])
+
+    output.reverse()
+    output.append(output[0])
+
+    return output
+
+
 def bellman_ford_second(residual_G):
     cycle_exists = False
     cycle_element = None
@@ -140,62 +171,8 @@ def bellman_ford_second(residual_G):
             delta= min(delta, residual_G.adj_matrix[curr_val][future_val].upper_bound)
         return delta, final_path
 
-def find_cycle(parent_el, starting, path):
-    cycle_vertexes = []
-    #kouknu se co do nej vedlo
-    cur = parent_el
-    #print(len(cycle))
-    #pridam prvni prvek
-    q = deque()
-    q.appendleft(starting)
-    while q:
-        node = q.pop()
-        #print("exploring")
-        cycle_vertexes.append(node)
-        cur = path[node]
-        if (path[node] not in cycle_vertexes):
-            q.appendleft(path[node])
-    """
-    #loop till is all cycle in field
-    while cur not in cycle_vertexes:
-        #pridam to
-        cycle_vertexes.append(cur)
-        #print(cur + " added to cycle")
-        #kouknu se co do nej vedlo
-        cur = path[cur]
-    """
-    #print(cycle)
-    cycle_starts_idx = cycle_vertexes.index(cur)
-    #print(cur)
-    #print(cycle_starts_idx)
-    output = []
-    for i in range(cycle_starts_idx, len(cycle_vertexes)):
-        output.append(cycle_vertexes[i])
-
-    output.reverse()
-    output.append(output[0])
-
-    return output
-
 def solve(G, residual_G):
     while True:
-        """
-        for edge in residual_G.edges:
-            str_from = edge.from_node
-            str_to = edge.to_node
-            if (not (edge.from_node, edge.to_node) in residual_G.feas_edges) and edge.upper_bound >= 1:
-                residual_G.feas_edges[(str_from, str_to)] = edge
-                residual_G.feas_edges[(0, str_from)] = Edge(0, 0, 1, 0, -1, edge.from_node, False)
-                residual_G.feas_edges[(0, str_to)] = Edge(0, 0, 1, 0, -1, edge.to_node, False)
-                residual_G.dist[str_from], residual_G.dist[str_to] = np.inf, np.inf
-
-            if (edge.from_node, edge.to_node) in residual_G.feas_edges and edge.upper_bound < 1:
-                residual_G.feas_edges.pop((str_from, str_to))
-                if ((0, str_from) in residual_G.feas_edges):
-                    residual_G.feas_edges.pop((0, str_from))
-                if ((0, str_to) in residual_G.feas_edges):
-                    residual_G.feas_edges.pop((0, str_to))
-        """
         delta, cycle = bellman_ford_second(residual_G)
         if (cycle == []):
             break
@@ -205,19 +182,18 @@ def solve(G, residual_G):
             for (i, j) in cycle:
                 #error maybe here
                 #print(i, j)
-                if G.adj_matrix[i][j] != None:
+                if G.adj_matrix[i][j] == None:
                     #print("jsem tu " + str(counter))
-                    G.adj_matrix[i][j].flow += delta
+                    G.adj_matrix[j][i].flow -= delta
                     counter+=1
                 else:
-                    G.adj_matrix[j][i].flow -= delta
+                    G.adj_matrix[i][j].flow += delta
 
                 if(residual_G.adj_matrix[i][j].upper_bound - delta < 1 and residual_G.adj_matrix[i][j].upper_bound >= 1):
                     if (i, j) in residual_G.feas_edges:
                         residual_G.feas_edges.pop((i, j))
                     residual_G.feas_edges.pop((0, i))
                     residual_G.feas_edges.pop((0, j))
-                residual_G.adj_matrix[i][j].upper_bound -= delta
 
                 if (residual_G.adj_matrix[j][i].upper_bound + delta >= 1 and residual_G.adj_matrix[j][i].upper_bound < 1):
                     residual_G.dist[i] = np.inf
@@ -227,8 +203,8 @@ def solve(G, residual_G):
 
                     residual_G.feas_edges[(0, i)] = Edge(0, 0, 1, 0, -1, i, False)
                     residual_G.feas_edges[(0, j)] = Edge(0, 0, 1, 0, -1, j, False)
-
                 residual_G.adj_matrix[j][i].upper_bound += delta
+                residual_G.adj_matrix[i][j].upper_bound -= delta
     return G
 
 if  __name__ == '__main__':
@@ -336,7 +312,7 @@ if  __name__ == '__main__':
             if (edge.flow > 0):
                 string_to_write+=str(edge.to_node-players) + " "
 
-        print(string_to_write)
+        #print(string_to_write)
         f_output.write(string_to_write+"\n")
         prev_frame = curr_frame
 
